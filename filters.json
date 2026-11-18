@@ -12,9 +12,10 @@
           "anchor": 10,
           "model": "assets/topi-toga.glb",
           "fallback": "toga",
-          "posisi": [0, 0.3, -0.07],
+          "fit": "head",
+          "posisi": [0, 0.7, -0.05],
           "rotasi": [0, 0, 0],
-          "skala": 0.32
+          "skala": 2
         }
       ]
     },
@@ -29,9 +30,10 @@
           "anchor": 168,
           "model": "assets/kacamata.glb",
           "fallback": "kacamata",
+          "fit": "eyes",
           "posisi": [0, -0.04, 0.2],
           "rotasi": [0, 0, 0],
-          "skala": 0.4
+          "skala": 1
         }
       ]
     }

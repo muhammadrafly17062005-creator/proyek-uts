@@ -35,10 +35,14 @@
   .caption{text-align:center;margin-bottom:14px}
   .caption b{font-size:20px;font-weight:800;letter-spacing:-.01em}
   .caption span{display:block;font-size:13px;opacity:.8;margin-top:2px}
-  .controls{display:flex;align-items:center;justify-content:center;gap:22px}
+  .controls{display:flex;align-items:center;justify-content:center;gap:6px}
   .nav{width:52px;height:52px;border-radius:50%;border:0;color:var(--paper);font-size:22px;cursor:pointer;
     background:rgba(255,255,255,.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .nav:active{transform:scale(.92)}
+  .utility{flex:0 0 40px;width:40px;height:40px;border:0;border-radius:50%;color:var(--paper);font-size:18px;cursor:pointer;
+    background:rgba(255,255,255,.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .utility:active{transform:scale(.92)}
+  .utility:disabled{opacity:.4}
   .shutter{width:80px;height:80px;border-radius:50%;border:4px solid var(--paper);background:transparent;padding:5px;cursor:pointer}
   .shutter i{display:block;width:100%;height:100%;border-radius:50%;background:var(--gold);transition:transform .12s}
   .shutter:active i{transform:scale(.86)}
@@ -91,6 +95,7 @@
   }
 }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
 </head>
 
 <body>
@@ -105,8 +110,10 @@
     <div class="caption"><b id="fName">…</b><span id="fDesc"></span></div>
     <div class="controls">
       <button class="nav" id="prev" aria-label="Filter sebelumnya">‹</button>
+      <button class="utility" id="cameraSwitch" aria-label="Ganti ke kamera belakang" title="Ganti kamera" disabled>🔄</button>
       <button class="shutter" id="shutter" aria-label="Ambil foto" disabled><i></i></button>
       <button class="nav" id="next" aria-label="Filter berikutnya">›</button>
+      <button class="utility" id="soundToggle" aria-label="Aktifkan suara" title="Aktifkan suara">🔇</button>
     </div>
     <div class="chips" id="chips"></div>
   </footer>
@@ -176,10 +183,9 @@ function buatToga() {
   const knob = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 12), GOLD());
   knob.position.y = -.38; swing.add(knob);
 
-  return { object: g, update: t => {          // animasi aktif (loop)
+  return { object: g, contactY: .35, update: t => {
     swing.rotation.z = Math.sin(t * 3.2) * .38;
     swing.rotation.x = Math.cos(t * 2.4) * .18;
-    g.rotation.z = Math.sin(t * 1.4) * .03;
   }};
 }
 
@@ -187,17 +193,18 @@ function buatKacamata() {
   const g = new THREE.Group();
   const frame = GOLD();
   const lens = mat(0x7fd6ff, { transparent: true, opacity: .35, metalness: .3, roughness: .1 });
-
-  [-1, 1].forEach(s => {
+  const eyes = [];
+  [-1, 1].forEach(() => {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(.33, .04, 12, 40), frame);
-    ring.position.x = s * .42; g.add(ring);
+    g.add(ring);
     const glass = new THREE.Mesh(new THREE.CircleGeometry(.33, 32), lens);
-    glass.position.set(s * .42, 0, .01); g.add(glass);
+    g.add(glass);
     const arm = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, .9, 8), frame);
-    arm.rotation.x = Math.PI / 2; arm.position.set(s * .75, .05, -.45); g.add(arm);
+    g.add(arm);
+    eyes.push({ ring, glass, arm });
   });
   const bridge = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, .22, 8), frame);
-  bridge.rotation.z = Math.PI / 2; bridge.position.y = .08; g.add(bridge);
+  g.add(bridge);
 
   // Bintang berkilau yang mengorbit
   const stars = [];
@@ -205,14 +212,68 @@ function buatKacamata() {
     const s = new THREE.Mesh(new THREE.OctahedronGeometry(.07 + (i % 2) * .03), mat(0xfff2b0, { emissive: 0xf0c24b, emissiveIntensity: .8 }));
     g.add(s); stars.push(s);
   }
-  return { object: g, update: t => {
-    stars.forEach((s, i) => {
-      const a = t * 1.8 + (i / stars.length) * Math.PI * 2;
-      s.position.set(Math.cos(a) * 1.0, Math.sin(a * 1.3) * .4 + .15, .2);
-      s.rotation.set(t * 3 + i, t * 2, 0);
-      s.scale.setScalar(.75 + Math.sin(t * 5 + i * 1.7) * .35);
-    });
-  }};
+  let center = new THREE.Vector3(), eyeSpan = 0, eyeWidth = 0, forward = 0;
+  return {
+    object: g,
+    fitToEyes(points, ratio) {
+      const midpoint = (a, b) => a.clone().add(b).multiplyScalar(.5);
+      const leftCenter = midpoint(points.leftEye, points.leftEyeInner);
+      const rightCenter = midpoint(points.rightEye, points.rightEyeInner);
+      const widths = [
+        points.leftEye.distanceTo(points.leftEyeInner),
+        points.rightEye.distanceTo(points.rightEyeInner)
+      ];
+      eyeWidth = (widths[0] + widths[1]) / 2;
+      eyeSpan = leftCenter.distanceTo(rightCenter);
+      center = midpoint(leftCenter, rightCenter);
+      forward = eyeWidth * .08;
+
+      [
+        { outer: points.leftEye, inner: points.leftEyeInner, center: leftCenter, fit: eyes[0] },
+        { outer: points.rightEye, inner: points.rightEyeInner, center: rightCenter, fit: eyes[1] }
+      ].forEach(({ outer, inner, center: eyeCenter, fit }) => {
+        const width = outer.distanceTo(inner);
+        const angle = Math.atan2(inner.y - outer.y, inner.x - outer.x);
+        fit.ring.position.set(eyeCenter.x, eyeCenter.y, eyeCenter.z + forward);
+        fit.ring.rotation.z = angle;
+        fit.ring.scale.set(width * 1.55 * ratio / .74, width * 1.2 * ratio / .74, 1);
+        fit.glass.position.set(eyeCenter.x, eyeCenter.y, eyeCenter.z + forward + .005);
+        fit.glass.rotation.z = angle;
+        fit.glass.scale.set(width * 1.4 * ratio / .66, width * .98 * ratio / .66, 1);
+
+        const side = Math.sign(outer.x - inner.x);
+        const armLength = width * 1.8;
+        fit.arm.position.set(
+          outer.x + side * width * .2,
+          outer.y,
+          outer.z + forward - armLength / 2
+        );
+        fit.arm.rotation.set(Math.PI / 2, 0, 0);
+        fit.arm.scale.set(1, armLength / .9, 1);
+      });
+
+      const innerLeft = points.leftEyeInner, innerRight = points.rightEyeInner;
+      const bridgeVector = innerRight.clone().sub(innerLeft);
+      const bridgeLength = bridgeVector.length();
+      bridge.position.copy(midpoint(innerLeft, innerRight));
+      bridge.position.z += forward;
+      bridge.rotation.z = Math.atan2(bridgeVector.y, bridgeVector.x) - Math.PI / 2;
+      bridge.scale.set(1, bridgeLength / .22, 1);
+    },
+    update: t => {
+      const starScale = eyeWidth * .7;
+      stars.forEach((s, i) => {
+        const a = t * 1.8 + (i / stars.length) * Math.PI * 2;
+        s.position.set(
+          center.x + Math.cos(a) * eyeSpan * .45,
+          center.y + Math.sin(a * 1.3) * eyeWidth * .35,
+          center.z + forward
+        );
+        s.rotation.set(t * 3 + i, t * 2, 0);
+        s.scale.setScalar(starScale * (.8 + Math.sin(t * 5 + i * 1.7) * .2));
+      });
+    }
+  };
 }
 
 const FALLBACKS = { toga: buatToga, kacamata: buatKacamata };
@@ -243,7 +304,7 @@ function buatLalat() {
   return { group, wings };
 }
 
-function buatKepalan() {
+function buatKepalanTangan() {
   const group = new THREE.Group();
   const sarung = mat(0xf0c24b, { roughness: .38 });
   const cuff = new THREE.Mesh(new THREE.CylinderGeometry(.13, .16, .22, 12), mat(0x26366e));
@@ -266,15 +327,15 @@ function buatKepalan() {
   return group;
 }
 
-function buatEfekTonjok() {
+function buatEfekTinju() {
   const group = new THREE.Group();
-  const kepalan = buatKepalan();
+  const kepalan = buatKepalanTangan();
   group.add(kepalan);
 
   const kilau = new THREE.Group();
   const material = mat(0xfff2a6, { emissive: 0xf0c24b, emissiveIntensity: 1.3 });
   for (let i = 0; i < 5; i++) {
-    const bintang = new THREE.Mesh(new THREE.OctahedronGeometry(.075, 0), material);
+    const bintang = new THREE.Mesh(new THREE.OctahedronGeometry(.075), material);
     const sudut = i / 5 * Math.PI * 2;
     bintang.position.set(Math.cos(sudut) * .38, Math.sin(sudut) * .32, .04);
     kilau.add(bintang);
@@ -292,6 +353,9 @@ let filters = [];          // { data, groups:[{group, update, mixer}] }
 let aktif = 0;
 const clock = new THREE.Clock();
 let started = false, lastPhoto = null;
+let suaraAktif = false, kameraSwitching = false;
+let handTracker = null, handInferenceRunning = false, handInferenceErrorShown = false;
+let lastHandInference = 0, fistFrames = 0;
 let faceDetected = false;
 let efekWajah;
 
@@ -307,6 +371,8 @@ async function buatAksesori(a, anchorGroup) {
   const wrapper = new THREE.Group();
   const posisiDasar = new THREE.Vector3(...a.posisi);
   let update = () => {}, mixer = null;
+  let fitToEyes = null;
+  let contactY = null;
 
   try {
     const gltf = await muatGLB(a.model);
@@ -319,6 +385,8 @@ async function buatAksesori(a, anchorGroup) {
     const fb = FALLBACKS[a.fallback]();       // model buatan kode
     wrapper.add(fb.object);
     update = fb.update;
+    fitToEyes = fb.fitToEyes || null;
+    contactY = fb.contactY ?? null;
   }
 
   wrapper.position.copy(posisiDasar);
@@ -328,10 +396,44 @@ async function buatAksesori(a, anchorGroup) {
   anchorGroup.add(wrapper);
   return {
     group: wrapper, update, mixer,
-    fitToFace(faceWidth) {
-      const factor = faceWidth / .6;
-      wrapper.position.copy(posisiDasar).multiplyScalar(factor);
-      wrapper.scale.setScalar(a.skala * factor);
+    fitToFace(points) {
+      const local = point => anchorGroup.worldToLocal(point.clone());
+      if (a.fit === 'eyes' && fitToEyes) {
+        wrapper.position.set(0, 0, 0);
+        wrapper.scale.setScalar(1);
+        fitToEyes({
+          leftEye: local(points.leftEye),
+          rightEye: local(points.rightEye),
+          leftEyeInner: local(points.leftEyeInner),
+          rightEyeInner: local(points.rightEyeInner)
+        }, a.skala);
+        return;
+      }
+      if (a.fit === 'head') {
+        const headWidth = local(points.leftCheek).distanceTo(local(points.rightCheek));
+        if (!Number.isFinite(headWidth) || headWidth <= 0) return;
+        const unit = headWidth / 2.828;
+        const scale = a.skala * unit;
+        wrapper.position.set(
+          posisiDasar.x * unit,
+          contactY === null ? posisiDasar.y * unit : contactY * scale,
+          posisiDasar.z * unit
+        );
+        wrapper.scale.setScalar(scale);
+      } else if (a.fit === 'eyes') {
+        const leftEye = local(points.leftEye);
+        const rightEye = local(points.rightEye);
+        const eyeSpan = leftEye.distanceTo(rightEye);
+        const eyeWidth = (
+          leftEye.distanceTo(local(points.leftEyeInner)) +
+          rightEye.distanceTo(local(points.rightEyeInner))
+        ) / 2;
+        if (!Number.isFinite(eyeSpan) || eyeSpan <= 0 || !Number.isFinite(eyeWidth) || eyeWidth <= 0) return;
+        const xUnit = eyeSpan / 1.7;
+        const yUnit = eyeWidth / .74;
+        wrapper.position.set(posisiDasar.x * xUnit, posisiDasar.y * yUnit, posisiDasar.z * yUnit);
+        wrapper.scale.set(xUnit * a.skala, yUnit * a.skala, yUnit * a.skala);
+      }
     }
   };
 }
@@ -353,6 +455,29 @@ async function pastikanAksesKamera() {
     video: { facingMode: 'user' }
   });
   stream.getTracks().forEach(track => track.stop());
+}
+
+async function mulaiPelacakanTangan() {
+  if (typeof window.Hands !== 'function') {
+    throw new Error('Model pelacakan tangan tidak berhasil dimuat.');
+  }
+  const tracker = new window.Hands({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+  });
+  tracker.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 0,
+    minDetectionConfidence: .65,
+    minTrackingConfidence: .55
+  });
+  tracker.onResults(hasilPelacakanTangan);
+  handTracker = tracker;
+  try {
+    await tracker.send({ image: mindar.video });
+  } catch (error) {
+    handTracker = null;
+    throw error;
+  }
 }
 
 /* =====================================================
@@ -377,12 +502,16 @@ async function init() {
   const mulutBawah = getAnchor(14).group;
   const mataKiri = getAnchor(33).group;
   const mataKanan = getAnchor(263).group;
+  const sudutDalamMataKiri = getAnchor(133).group;
+  const sudutDalamMataKanan = getAnchor(362).group;
+  const pipiKiri = getAnchor(234).group;
+  const pipiKanan = getAnchor(454).group;
   const efekLalat = buatLalat();
-  const efekTonjok = buatEfekTonjok();
+  const efekTinju = buatEfekTinju();
   mulutAtas.add(efekLalat.group);
-  getAnchor(168).group.add(efekTonjok.group);
+  getAnchor(168).group.add(efekTinju.group);
   efekLalat.group.visible = false;
-  efekTonjok.group.visible = false;
+  efekTinju.group.visible = false;
   efekLalat.group.scale.setScalar(.7);
 
   for (const f of config.filters) {
@@ -393,16 +522,29 @@ async function init() {
 
   efekWajah = {
     fly: { ...efekLalat, active: false, startedAt: 0, cooldownUntil: 0, armed: true },
-    punch: { ...efekTonjok, active: false, startedAt: 0, cooldownUntil: 0, armed: true, direction: 1 },
+    punch: { ...efekTinju, active: false, startedAt: 0, cooldownUntil: 0, armed: true, direction: 1 },
+    fist: { cooldownUntil: 0, armed: true },
     mouthUpper: mulutAtas,
     mouthLower: mulutBawah,
     leftEye: mataKiri,
-    rightEye: mataKanan
+    rightEye: mataKanan,
+    leftEyeInner: sudutDalamMataKiri,
+    rightEyeInner: sudutDalamMataKanan,
+    leftCheek: pipiKiri,
+    rightCheek: pipiKanan
   };
 
   await pastikanAksesKamera();
   await mindar.start();                       // minta izin kamera di sini
+  try {
+    await mulaiPelacakanTangan();
+  } catch (error) {
+    console.error(error);
+    toast('Deteksi kepalan tangan tidak tersedia');
+  }
   started = true;
+  $('cameraSwitch').disabled = false;
+  updateCameraSwitchButton();
 
   const saved = localStorage.getItem(STORAGE_KEY);
   const idx = filters.findIndex(f => f.data.id === saved);
@@ -412,6 +554,10 @@ async function init() {
     const dt = clock.getDelta(), t = clock.elapsedTime;
     const faceFound = Boolean(mindar.getLatestEstimate());
     if (faceFound !== faceDetected) setStatus(faceFound);
+    if (handTracker && t - lastHandInference >= .16) {
+      lastHandInference = t;
+      prosesFrameTangan();
+    }
     filters[aktif].groups.forEach(g => { g.update(t); g.mixer?.update(dt); });
     updateEfekWajah(t, faceFound);
     renderer.render(scene, camera);
@@ -432,24 +578,30 @@ function updateEfekWajah(t, faceFound) {
     if (efekWajah) {
       efekWajah.fly.active = false;
       efekWajah.fly.group.visible = false;
+      efekWajah.fly.armed = true;
       efekWajah.punch.active = false;
       efekWajah.punch.group.visible = false;
       efekWajah.punch.kilau.visible = false;
-      efekWajah.fly.armed = true;
       efekWajah.punch.armed = true;
+      efekWajah.fist.armed = true;
     }
     return;
   }
 
   scene.updateMatrixWorld(true);
   const point = group => group.getWorldPosition(new THREE.Vector3());
-  const measuredFaceWidth = point(efekWajah.leftEye).distanceTo(point(efekWajah.rightEye));
-  if (Number.isFinite(measuredFaceWidth) && measuredFaceWidth > 0) {
-    filters[aktif].groups.forEach(g => g.fitToFace(measuredFaceWidth));
-  }
+  const facePoints = {
+    leftEye: point(efekWajah.leftEye),
+    rightEye: point(efekWajah.rightEye),
+    leftEyeInner: point(efekWajah.leftEyeInner),
+    rightEyeInner: point(efekWajah.rightEyeInner),
+    leftCheek: point(efekWajah.leftCheek),
+    rightCheek: point(efekWajah.rightCheek)
+  };
+  filters[aktif].groups.forEach(g => g.fitToFace(facePoints));
   const lipGap = point(efekWajah.mouthUpper).distanceTo(point(efekWajah.mouthLower));
-  const eyeLeft = point(efekWajah.leftEye);
-  const eyeRight = point(efekWajah.rightEye);
+  const eyeLeft = facePoints.leftEye;
+  const eyeRight = facePoints.rightEye;
   const faceWidth = eyeLeft.distanceTo(eyeRight);
   const mouthRatio = faceWidth > 0 ? lipGap / faceWidth : 0;
   const mouthOpen = mouthRatio > .12;
@@ -500,7 +652,6 @@ function updateEfekWajah(t, faceFound) {
     efekWajah.punch.direction = roll >= 0 ? 1 : -1;
     efekWajah.punch.group.visible = true;
     efekWajah.punch.kilau.visible = false;
-    serukanHidupJokowi();
   }
 
   if (efekWajah.punch.active) {
@@ -532,8 +683,55 @@ function updateEfekWajah(t, faceFound) {
   }
 }
 
+function prosesFrameTangan() {
+  const video = mindar.video;
+  if (!handTracker || kameraSwitching || handInferenceRunning || !video || video.readyState < 2) return;
+  handInferenceRunning = true;
+  handTracker.send({ image: video })
+    .catch(error => {
+      if (!handInferenceErrorShown) {
+        console.error(error);
+        toast('Pelacakan tangan terhenti');
+        handInferenceErrorShown = true;
+      }
+    })
+    .finally(() => { handInferenceRunning = false; });
+}
+
+function hasilPelacakanTangan(results) {
+  if (kameraSwitching) return;
+  const landmarks = results.multiHandLandmarks || [];
+  const mengepal = landmarks.some(hand => {
+    const wrist = hand[0];
+    const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const fingers = [[8, 6], [12, 10], [16, 14], [20, 18]];
+    const curled = fingers.filter(([tip, pip]) =>
+      distance(hand[tip], wrist) < distance(hand[pip], wrist) * 1.1
+    ).length;
+    return curled >= 3;
+  });
+
+  if (!mengepal) {
+    fistFrames = 0;
+    if (efekWajah) efekWajah.fist.armed = true;
+    return;
+  }
+  fistFrames = Math.min(fistFrames + 1, 2);
+  if (fistFrames >= 2) mulaiEfekKepalan();
+}
+
+function mulaiEfekKepalan() {
+  const fist = efekWajah?.fist;
+  const t = clock.elapsedTime;
+  if (!fist || !faceDetected || !fist.armed || t < fist.cooldownUntil) return;
+  fist.armed = false;
+  fist.cooldownUntil = t + 1.4;
+  serukanHidupJokowi();
+}
+
 function serukanHidupJokowi() {
-  if (!('speechSynthesis' in window)) return;
+  if (!suaraAktif || !('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return;
+  window.speechSynthesis.cancel();
   const seruan = new SpeechSynthesisUtterance('Hidup Jokowi!');
   seruan.lang = 'id-ID';
   seruan.rate = 1.05;
@@ -544,6 +742,17 @@ function serukanHidupJokowi() {
   if (suaraIndonesia) seruan.voice = suaraIndonesia;
   window.speechSynthesis.speak(seruan);
 }
+$('soundToggle').onclick = () => {
+  if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+    return toast('Browser ini tidak mendukung suara otomatis');
+  }
+  suaraAktif = !suaraAktif;
+  $('soundToggle').textContent = suaraAktif ? '🔊' : '🔇';
+  $('soundToggle').setAttribute('aria-label', suaraAktif ? 'Matikan suara' : 'Aktifkan suara');
+  $('soundToggle').title = suaraAktif ? 'Suara aktif' : 'Aktifkan suara';
+  if (suaraAktif) serukanHidupJokowi();
+  else window.speechSynthesis.cancel();
+};
 
 /* =====================================================
    5. GANTI FILTER
@@ -654,6 +863,46 @@ async function mulai() {
     await init();
   } catch (e) { tampilError(e); }
 }
+function updateCameraSwitchButton() {
+  if (!mindar) return;
+  $('cameraSwitch').setAttribute(
+    'aria-label',
+    mindar.shouldFaceUser ? 'Ganti ke kamera belakang' : 'Ganti ke kamera depan'
+  );
+}
+async function gantiKamera() {
+  if (!started || kameraSwitching) return;
+  kameraSwitching = true;
+  $('cameraSwitch').disabled = true;
+  const facingUserBefore = mindar.shouldFaceUser;
+  const facingUserNext = !facingUserBefore;
+  try {
+    mindar.stop();
+    mindar.shouldFaceUser = facingUserNext;
+    await mindar.start();
+    mindar.latestEstimate = null;
+    fistFrames = 0;
+    setStatus(false);
+    toast(facingUserNext ? 'Kamera depan aktif' : 'Kamera belakang aktif');
+  } catch (error) {
+    console.error(error);
+    mindar.shouldFaceUser = facingUserBefore;
+    try {
+      await mindar.start();
+      mindar.latestEstimate = null;
+      fistFrames = 0;
+      setStatus(false);
+      toast(facingUserNext ? 'Kamera depan tidak tersedia' : 'Kamera belakang tidak tersedia');
+    } catch (restartError) {
+      tampilError(restartError);
+    }
+  } finally {
+    kameraSwitching = false;
+    $('cameraSwitch').disabled = false;
+    updateCameraSwitchButton();
+  }
+}
+$('cameraSwitch').onclick = gantiKamera;
 $('retry').onclick = mulai;
 mulai();
 </script>
