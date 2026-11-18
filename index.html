@@ -305,6 +305,7 @@ function muatGLB(url) {
 
 async function buatAksesori(a, anchorGroup) {
   const wrapper = new THREE.Group();
+  const posisiDasar = new THREE.Vector3(...a.posisi);
   let update = () => {}, mixer = null;
 
   try {
@@ -320,12 +321,19 @@ async function buatAksesori(a, anchorGroup) {
     update = fb.update;
   }
 
-  wrapper.position.set(...a.posisi);
+  wrapper.position.copy(posisiDasar);
   wrapper.rotation.set(...a.rotasi);
   wrapper.scale.setScalar(a.skala);
   wrapper.visible = false;
   anchorGroup.add(wrapper);
-  return { group: wrapper, update, mixer };
+  return {
+    group: wrapper, update, mixer,
+    fitToFace(faceWidth) {
+      const factor = faceWidth / .6;
+      wrapper.position.copy(posisiDasar).multiplyScalar(factor);
+      wrapper.scale.setScalar(a.skala * factor);
+    }
+  };
 }
 
 async function pastikanAksesKamera() {
@@ -435,6 +443,10 @@ function updateEfekWajah(t, faceFound) {
 
   scene.updateMatrixWorld(true);
   const point = group => group.getWorldPosition(new THREE.Vector3());
+  const measuredFaceWidth = point(efekWajah.leftEye).distanceTo(point(efekWajah.rightEye));
+  if (Number.isFinite(measuredFaceWidth) && measuredFaceWidth > 0) {
+    filters[aktif].groups.forEach(g => g.fitToFace(measuredFaceWidth));
+  }
   const lipGap = point(efekWajah.mouthUpper).distanceTo(point(efekWajah.mouthLower));
   const eyeLeft = point(efekWajah.leftEye);
   const eyeRight = point(efekWajah.rightEye);
@@ -488,6 +500,7 @@ function updateEfekWajah(t, faceFound) {
     efekWajah.punch.direction = roll >= 0 ? 1 : -1;
     efekWajah.punch.group.visible = true;
     efekWajah.punch.kilau.visible = false;
+    serukanHidupJokowi();
   }
 
   if (efekWajah.punch.active) {
@@ -517,6 +530,19 @@ function updateEfekWajah(t, faceFound) {
       efekWajah.punch.kilau.visible = false;
     }
   }
+}
+
+function serukanHidupJokowi() {
+  if (!('speechSynthesis' in window)) return;
+  const seruan = new SpeechSynthesisUtterance('Hidup Jokowi!');
+  seruan.lang = 'id-ID';
+  seruan.rate = 1.05;
+  seruan.pitch = 1;
+  seruan.volume = .85;
+  const suaraIndonesia = window.speechSynthesis.getVoices()
+    .find(voice => voice.lang.toLowerCase().startsWith('id'));
+  if (suaraIndonesia) seruan.voice = suaraIndonesia;
+  window.speechSynthesis.speak(seruan);
 }
 
 /* =====================================================
