@@ -5,7 +5,7 @@ Aplikasi Augmented Reality (AR) berbasis web (Prototipe v0.5) yang menempelkan a
 Proyek ini disusun untuk memenuhi tugas Miniproject UTS mata kuliah **Praktikum Augmented dan Virtual Reality (ITIA730591)**, Program Studi Teknologi Informasi, Fakultas Ilmu Komputer dan Teknologi Informasi (FIKTI), Universitas Muhammadiyah Sumatera Utara (UMSU).
 
 ## Teknologi yang Digunakan
-* **Three.js** (`v0.175.0`) — Rendering objek dan klip animasi 3D
+* **Three.js** (`v0.160.0`) — Rendering objek dan klip animasi 3D
 * **MindAR** — *Face tracking* berbasis web
 * **HTML5, CSS3, JavaScript** — Antarmuka pengguna (HUD) dan logika interaksi
 * **Node.js (`serve-https.js`)** — Server HTTPS lokal untuk pengujian kamera saat *development*

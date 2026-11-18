@@ -205,10 +205,10 @@ function buatToga() {
 function buatKacamata() {
   const g = new THREE.Group();
   const frame = GOLD();
-  const lens = mat(0x7fd6ff, { transparent: true, opacity: .35, metalness: .3, roughness: .1 });
+  const lens = mat(0x7fd6ff, { transparent: true, opacity: .52, metalness: .3, roughness: .1 });
   const eyes = [];
   [-1, 1].forEach(() => {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(.33, .04, 12, 40), frame);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.33, .05, 12, 40), frame);
     g.add(ring);
     const glass = new THREE.Mesh(new THREE.CircleGeometry(.33, 32), lens);
     g.add(glass);
@@ -249,13 +249,13 @@ function buatKacamata() {
         const angle = Math.atan2(inner.y - outer.y, inner.x - outer.x);
         fit.ring.position.set(eyeCenter.x, eyeCenter.y, eyeCenter.z + forward);
         fit.ring.rotation.z = angle;
-        fit.ring.scale.set(width * 1.55 * ratio / .74, width * 1.2 * ratio / .74, 1);
+        fit.ring.scale.set(width * 1.45 * ratio / .74, width * 1.12 * ratio / .74, 1);
         fit.glass.position.set(eyeCenter.x, eyeCenter.y, eyeCenter.z + forward + .005);
         fit.glass.rotation.z = angle;
         fit.glass.scale.set(width * 1.4 * ratio / .66, width * .98 * ratio / .66, 1);
 
         const side = Math.sign(outer.x - inner.x);
-        const armLength = width * 1.8;
+        const armLength = width * 1.8 * ratio;
         fit.arm.position.set(
           outer.x + side * width * .2,
           outer.y,
@@ -271,7 +271,7 @@ function buatKacamata() {
       bridge.position.copy(midpoint(innerLeft, innerRight));
       bridge.position.z += forward;
       bridge.rotation.z = Math.atan2(bridgeVector.y, bridgeVector.x) - Math.PI / 2;
-      bridge.scale.set(1, bridgeLength / .22, 1);
+      bridge.scale.set(1, bridgeLength * ratio / .22, 1);
     },
     update: t => {
       const starScale = eyeWidth * .7;
@@ -366,10 +366,11 @@ let filters = [];          // { data, groups:[{group, update, mixer}] }
 let aktif = 0;
 const clock = new THREE.Clock();
 let started = false, lastPhoto = null;
-let suaraAktif = false, kameraSwitching = false;
+let suaraAktif = false, kameraSwitching = false, audioContext = null;
 let handTracker = null, handInferenceRunning = false, handInferenceErrorShown = false;
-let lastHandInference = 0, fistFrames = 0;
+let lastHandInference = 0, fistFrames = 0, cameraDetectionTimer = null;
 let faceDetected = false;
+let faceFlag = false;      // diisi oleh controller MindAR setiap frame (true = ada wajah)
 let efekWajah;
 
 /* =====================================================
@@ -426,7 +427,7 @@ async function buatAksesori(a, anchorGroup) {
         const headWidth = local(points.leftCheek).distanceTo(local(points.rightCheek));
         if (!Number.isFinite(headWidth) || headWidth <= 0) return;
         const unit = headWidth / 2.828;
-        const scale = a.skala * unit;
+        const scale = a.skala * unit * 1.1;
         wrapper.position.set(
           posisiDasar.x * unit,
           contactY === null ? posisiDasar.y * unit : contactY * scale,
@@ -462,12 +463,6 @@ async function pastikanAksesKamera() {
     error.name = 'NotSupportedError';
     throw error;
   }
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: 'user' }
-  });
-  stream.getTracks().forEach(track => track.stop());
 }
 
 async function mulaiPelacakanTangan() {
@@ -484,12 +479,19 @@ async function mulaiPelacakanTangan() {
     minTrackingConfidence: .55
   });
   tracker.onResults(hasilPelacakanTangan);
-  handTracker = tracker;
   try {
     await tracker.send({ image: mindar.video });
+    handTracker = tracker;
   } catch (error) {
-    handTracker = null;
     throw error;
+  }
+}
+
+function tutupPelacakanWajah(ctrl) {
+  try {
+    ctrl?.faceMeshHelper?.faceLandmarker?.close?.();
+  } catch (error) {
+    console.warn('Model pelacakan wajah lama tidak dapat ditutup:', error);
   }
 }
 
@@ -499,7 +501,23 @@ async function mulaiPelacakanTangan() {
 async function init() {
   config = await (await fetch('filters.json')).json();
 
-  mindar = new MindARThree({ container: $('stage') });
+  // Jika init() dipanggil ulang (mis. tombol "Coba lagi" setelah izin kamera ditolak),
+  // bersihkan sisa percobaan sebelumnya agar filter dan canvas tidak dobel.
+  renderer?.setAnimationLoop(null);
+  if (mindar) {
+    mindar.controller.__dead = true;
+    mindar.controller.stopProcessVideo?.();
+    mindar.video?.srcObject?.getTracks?.().forEach(track => track.stop());
+    mindar.video?.remove();
+    tutupPelacakanWajah(mindar.controller);
+  }
+  $('stage').innerHTML = '';
+  filters = [];
+
+  mindar = new MindARThree({ container: $('stage'), uiLoading: 'no', uiScanning: 'no' });
+  pasangPembukaKamera(mindar);
+  gunakanUlangFaceLandmarker(mindar.controller);
+  siapkanController(mindar.controller);
   ({ renderer, scene, camera } = mindar);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -551,12 +569,6 @@ async function init() {
 
   await pastikanAksesKamera();
   await mindar.start();                       // minta izin kamera di sini
-  try {
-    await mulaiPelacakanTangan();
-  } catch (error) {
-    console.error(error);
-    toast('Deteksi kepalan tangan tidak tersedia');
-  }
   started = true;
   $('cameraSwitch').disabled = false;
   updateCameraSwitchButton();
@@ -567,12 +579,12 @@ async function init() {
 
   renderer.setAnimationLoop(() => {
     const dt = clock.getDelta(), t = clock.elapsedTime;
-    const faceFound = Boolean(mindar.getLatestEstimate());
+    const faceFound = faceFlag;
     if (faceFound !== faceDetected) setStatus(faceFound);
-    if (handTracker && t - lastHandInference >= .16) {
+    if (faceFound && handTracker && t - lastHandInference >= .33) {
       lastHandInference = t;
       prosesFrameTangan();
-    }
+    } else if (!faceFound) fistFrames = 0;
     filters[aktif].groups.forEach(g => { g.update(t); g.mixer?.update(dt); });
     updateEfekWajah(t, faceFound);
     renderer.render(scene, camera);
@@ -580,6 +592,10 @@ async function init() {
 
   $('loading').classList.add('hide');
   $('shutter').disabled = false;
+  mulaiPelacakanTangan().catch(error => {
+    console.error(error);
+    toast('Deteksi kepalan tangan tidak tersedia');
+  });
 }
 
 function setStatus(found) {
@@ -637,6 +653,7 @@ function updateEfekWajah(t, faceFound) {
     efekWajah.fly.startedAt = t;
     efekWajah.fly.cooldownUntil = t + 1.8;
     efekWajah.fly.group.visible = true;
+    mainkanEfekSuara('fly');
     const scale = efekWajah.fly.faceScale;
     efekWajah.fly.group.position.set(-.72 * scale, .12 * scale, .48 * scale);
   }
@@ -678,6 +695,7 @@ function updateEfekWajah(t, faceFound) {
     efekWajah.punch.direction = roll >= 0 ? 1 : -1;
     efekWajah.punch.group.visible = true;
     efekWajah.punch.kilau.visible = false;
+    mainkanEfekSuara('punch');
   }
 
   if (efekWajah.punch.active) {
@@ -755,6 +773,46 @@ function mulaiEfekKepalan() {
   serukanHidupJokowi();
 }
 
+function aktifkanAudio() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return false;
+  if (!audioContext) audioContext = new AudioContextClass();
+  if (audioContext.state !== 'running') {
+    audioContext.resume().catch(error => {
+      console.error(error);
+      toast('Audio tidak dapat diaktifkan');
+    });
+  }
+  return true;
+}
+
+function mainkanEfekSuara(jenis) {
+  if (!suaraAktif || !audioContext || audioContext.state !== 'running') return;
+  const now = audioContext.currentTime;
+  const nada = (awal, akhir, durasi, volume, tipe) => {
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = tipe;
+    oscillator.frequency.setValueAtTime(awal, now);
+    oscillator.frequency.exponentialRampToValueAtTime(akhir, now + durasi);
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + .01);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + durasi);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + durasi);
+  };
+
+  if (jenis === 'punch') {
+    nada(135, 45, .18, .38, 'sine');
+    nada(300, 85, .11, .08, 'triangle');
+  } else {
+    nada(180, 420, .14, .045, 'sawtooth');
+    nada(420, 220, .3, .035, 'sawtooth');
+  }
+}
+
 function serukanHidupJokowi() {
   if (!suaraAktif || !('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return;
   window.speechSynthesis.cancel();
@@ -776,7 +834,10 @@ $('soundToggle').onclick = () => {
   $('soundToggle').textContent = suaraAktif ? '🔊' : '🔇';
   $('soundToggle').setAttribute('aria-label', suaraAktif ? 'Matikan suara' : 'Aktifkan suara');
   $('soundToggle').title = suaraAktif ? 'Suara aktif' : 'Aktifkan suara';
-  if (suaraAktif) serukanHidupJokowi();
+  if (suaraAktif) {
+    if (!aktifkanAudio()) toast('Efek suara tidak didukung browser ini');
+    serukanHidupJokowi();
+  }
   else window.speechSynthesis.cancel();
 };
 
@@ -865,11 +926,11 @@ function tampilError(e) {
     steps = ['Jalankan situs melalui server lokal atau unggah ke hosting HTTPS', 'Buka kembali halaman dari alamat localhost atau https://', 'Ketuk “Coba lagi”'];
   } else if (name === 'NotAllowedError' || /permission|denied/i.test(msg)) {
     emoji = '🔒'; title = 'Izin kamera ditolak';
-    body = 'Filter wajah butuh kamera depan untuk melacak wajahmu. Tidak ada gambar yang dikirim ke server.';
+    body = 'Filter wajah membutuhkan izin untuk kamera yang dipilih. Tidak ada gambar yang dikirim ke server.';
     steps = ['Ketuk ikon kunci/pengaturan di sebelah alamat situs', 'Ubah izin Kamera menjadi “Izinkan”', 'Ketuk “Coba lagi”'];
   } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
     emoji = '🔍'; title = 'Kamera tidak ditemukan';
-    body = 'Perangkat ini tidak punya kamera depan yang bisa diakses.';
+    body = 'Kamera yang diminta tidak tersedia. Coba pilih kamera lain atau periksa izin kamera.';
   } else if (name === 'NotReadableError') {
     emoji = '⚠️'; title = 'Kamera sedang dipakai';
     body = 'Tutup aplikasi lain yang memakai kamera, lalu coba lagi.';
@@ -882,20 +943,132 @@ function tampilError(e) {
   $('loading').classList.add('hide'); $('errorBox').classList.remove('hide');
 }
 
+/* =====================================================
+   8. KAMERA DEPAN / BELAKANG
+   ===================================================== */
+
+// Membuka stream kamera. Depan memakai "ideal" (laptop yang tidak punya info facingMode tetap jalan),
+// belakang memakai "exact" supaya benar-benar kamera belakang. Kalau tidak ada, error yang JELAS dilempar
+// (OverconstrainedError) dan gantiKamera() otomatis kembali ke kamera sebelumnya.
+async function ambilStream(facingUser) {
+  const ukuran = { width: { ideal: 640 }, height: { ideal: 480 } };
+  const buka = facingMode => navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { ...ukuran, facingMode }
+  });
+  const requestedFacing = facingUser ? { ideal: 'user' } : { exact: 'environment' };
+  try {
+    return await buka(requestedFacing);
+  } catch (error) {
+    if (error?.name === 'NotReadableError') {
+      await new Promise(r => setTimeout(r, 600));
+      try {
+        return await buka(requestedFacing);
+      } catch (retryError) {
+        if (facingUser || !['NotFoundError', 'OverconstrainedError', 'NotReadableError'].includes(retryError?.name)) throw retryError;
+        return buka({ ideal: 'environment' });
+      }
+    }
+    if (!facingUser && ['NotFoundError', 'OverconstrainedError'].includes(error?.name)) {
+      return buka({ ideal: 'environment' });
+    }
+    throw error;
+  }
+}
+
+// Mengganti _startVideo bawaan MindAR. Bedanya: (1) memakai ambilStream() di atas,
+// (2) resolusi diatur SEBELUM MindAR membaca ukuran video (kalau resolusi diubah sesudahnya,
+// proyeksi 3D meleset), (3) error asli diteruskan sehingga layar error menampilkan penyebab yang benar.
+function pasangPembukaKamera(m) {
+  m._startVideo = async function () {
+    const video = document.createElement('video');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+    video.playsInline = true;
+    Object.assign(video.style, { position: 'absolute', top: '0px', left: '0px', zIndex: '-2' });
+    this.video = video;
+    this.container.appendChild(video);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      video.remove();
+      const error = new Error('Browser tidak menyediakan akses kamera.');
+      error.name = 'NotSupportedError';
+      throw error;
+    }
+
+    let stream;
+    let timeout;
+    try {
+      stream = await ambilStream(this.shouldFaceUser);
+      const metadataReady = new Promise((resolve, reject) => {
+        timeout = setTimeout(() => {
+          const error = new Error('Kamera tidak mengirim metadata video dalam 10 detik.');
+          error.name = 'NotReadableError';
+          reject(error);
+        }, 10000);
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+        video.addEventListener('error', () => reject(video.error || new Error('Video kamera gagal dimuat.')), { once: true });
+      });
+      video.srcObject = stream;
+      await Promise.all([video.play(), metadataReady]);
+      video.setAttribute('width', video.videoWidth);
+      video.setAttribute('height', video.videoHeight);
+    } catch (error) {
+      clearTimeout(timeout);
+      stream?.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+      video.remove();
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
+
+// Membungkus onUpdate milik controller: mencatat "ada wajah / tidak" ke faceFlag, dan MEMBUANG
+// hasil dari controller lama yang masih berjalan sesaat setelah kamera diganti
+// (penyebab efek berkedip/hilang di kamera baru).
+function siapkanController(ctrl) {
+  ctrl.__dead = false;
+  let handler = () => {};
+  Object.defineProperty(ctrl, 'onUpdate', {
+    configurable: true,
+    get: () => handler,
+    set: fn => {
+      handler = data => {
+        if (ctrl.__dead) return;
+        faceFlag = Boolean(data?.hasFace);
+        fn?.(data);
+      };
+    }
+  });
+}
+
+function gunakanUlangFaceLandmarker(ctrl) {
+  const setup = ctrl.setup.bind(ctrl);
+  ctrl.setup = async flipFace => {
+    ctrl.flipFace = flipFace;
+    if (!ctrl.faceMeshHelper?.faceLandmarker) await setup(flipFace);
+  };
+}
+
 async function mulai() {
   $('errorBox').classList.add('hide'); $('loading').classList.remove('hide');
   try {
-    if (started) { await mindar.start(); $('loading').classList.add('hide'); return; }
+    if (started) { await mulaiKameraDenganArah(mindar.shouldFaceUser); $('loading').classList.add('hide'); return; }
     await init();
   } catch (e) { tampilError(e); }
 }
+
 function updateCameraSwitchButton() {
   if (!mindar) return;
-  $('cameraSwitch').setAttribute(
-    'aria-label',
-    mindar.shouldFaceUser ? 'Ganti ke kamera belakang' : 'Ganti ke kamera depan'
-  );
+  const label = mindar.shouldFaceUser ? 'Ganti ke kamera belakang' : 'Ganti ke kamera depan';
+  $('cameraSwitch').setAttribute('aria-label', label);
+  $('cameraSwitch').title = label;
 }
+
 async function gantiKamera() {
   if (!started || kameraSwitching) return;
   kameraSwitching = true;
@@ -903,21 +1076,12 @@ async function gantiKamera() {
   const facingUserBefore = mindar.shouldFaceUser;
   const facingUserNext = !facingUserBefore;
   try {
-    mindar.stop();
-    mindar.shouldFaceUser = facingUserNext;
-    await mindar.start();
-    mindar.latestEstimate = null;
-    fistFrames = 0;
-    setStatus(false);
-    toast(facingUserNext ? 'Kamera depan aktif' : 'Kamera belakang aktif');
+    await mulaiKameraDenganArah(facingUserNext);
+    toast(facingUserNext ? 'Kamera depan aktif' : 'Kamera belakang aktif - arahkan ke wajah');
   } catch (error) {
     console.error(error);
-    mindar.shouldFaceUser = facingUserBefore;
     try {
-      await mindar.start();
-      mindar.latestEstimate = null;
-      fistFrames = 0;
-      setStatus(false);
+      await mulaiKameraDenganArah(facingUserBefore);   // kembali ke kamera sebelumnya
       toast(facingUserNext ? 'Kamera depan tidak tersedia' : 'Kamera belakang tidak tersedia');
     } catch (restartError) {
       tampilError(restartError);
@@ -928,6 +1092,60 @@ async function gantiKamera() {
     updateCameraSwitchButton();
   }
 }
+
+// Menghentikan kamera yang sedang jalan, lalu menyalakan kamera pada arah yang diminta.
+// Berlaku dua arah (depan -> belakang dan belakang -> depan) dengan alur yang sama.
+async function mulaiKameraDenganArah(facingUser) {
+  clearTimeout(cameraDetectionTimer);
+  cameraDetectionTimer = null;
+  const lama = mindar.controller;
+  const faceMeshHelper = lama.faceMeshHelper;
+  lama.__dead = true;
+  const videoAktif = mindar.video?.srcObject;
+  if (videoAktif) mindar.stop();
+  else {
+    lama.stopProcessVideo?.();
+    mindar.video?.remove();
+  }
+  faceFlag = false;
+  mindar.latestEstimate = null;
+  fistFrames = 0;
+
+  const controller = new lama.constructor({
+    filterMinCF: lama.filterMinCF,
+    filterBeta: lama.filterBeta
+  });
+  controller.faceMeshHelper = faceMeshHelper;
+  gunakanUlangFaceLandmarker(controller);
+  siapkanController(controller);
+  mindar.controller = controller;
+
+  mindar.shouldFaceUser = facingUser;
+  setStatus(false);
+  $('statusText').textContent = `Mengaktifkan kamera ${facingUser ? 'depan' : 'belakang'}...`;
+  await new Promise(r => setTimeout(r, 250));   // beri waktu perangkat melepas kamera lama
+  await mindar.start();
+  setStatus(false);
+  if (!facingUser) cobaOrientasiDeteksiBelakang();
+}
+
+function cobaOrientasiDeteksiBelakang() {
+  let percobaan = 0;
+  const cobaLagi = () => {
+    if (mindar.shouldFaceUser || faceFlag || percobaan >= 2) {
+      cameraDetectionTimer = null;
+      return;
+    }
+    percobaan++;
+    mindar.controller.flipFace = !mindar.controller.flipFace;
+    if (mindar.video) {
+      mindar.video.style.transform = mindar.controller.flipFace ? 'scaleX(-1)' : 'scaleX(1)';
+    }
+    cameraDetectionTimer = setTimeout(cobaLagi, 2500);
+  };
+  cameraDetectionTimer = setTimeout(cobaLagi, 2500);
+}
+
 $('cameraSwitch').onclick = gantiKamera;
 $('retry').onclick = mulai;
 mulai();
