@@ -12,56 +12,67 @@
     --navy:#101c3d; --navy-2:#1b2b5c; --gold:#f0c24b; --gold-d:#c99a1e;
     --paper:#f7f4ec; --ink:#0a1128; --danger:#ff7a6b;
     --font:'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --gutter:clamp(10px,2.4vw,28px);
+    --control-gap:clamp(4px,1vw,12px);
+    --nav-size:clamp(40px,4.2vw,52px);
+    --utility-size:clamp(36px,3.2vw,40px);
+    --shutter-size:clamp(64px,6.5vw,80px);
   }
   *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;background:var(--navy);color:var(--paper);font-family:var(--font);overflow:hidden}
+  html,body{height:100%;height:100dvh;background:var(--navy);color:var(--paper);font-family:var(--font);overflow:hidden}
   #stage{position:fixed;inset:0;background:var(--navy)}
 
   /* ---------- HUD ---------- */
   .top{position:fixed;left:0;right:0;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
-    padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 24px;
+    padding:calc(env(safe-area-inset-top,0px) + clamp(8px,1vw,12px)) var(--gutter) clamp(12px,2vw,24px);
     background:linear-gradient(to bottom,rgba(10,17,40,.65),transparent);pointer-events:none}
-  .brand{font-weight:800;font-size:17px;letter-spacing:-.01em}
-  .brand small{display:block;font-weight:500;font-size:12px;opacity:.75;letter-spacing:0}
-  .status{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;padding:7px 12px;border-radius:99px;
+  .brand{font-weight:800;font-size:clamp(14px,1.4vw,17px);letter-spacing:-.01em}
+  .brand small{display:block;font-weight:500;font-size:clamp(11px,1vw,12px);opacity:.75;letter-spacing:0}
+  .status{display:flex;align-items:center;gap:8px;font-size:clamp(11px,1.1vw,13px);font-weight:700;
+    padding:clamp(6px,.7vw,7px) clamp(8px,1vw,12px);border-radius:99px;
     background:rgba(10,17,40,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--gold);animation:pulse 1.2s infinite}
   .status.found .dot{background:#5be3a1;animation:none}
   @keyframes pulse{50%{opacity:.3}}
 
   .bottom{position:fixed;left:0;right:0;bottom:0;z-index:5;
-    padding:40px 16px calc(env(safe-area-inset-bottom,0px) + 18px);
+    padding:clamp(20px,4vh,40px) var(--gutter) calc(env(safe-area-inset-bottom,0px) + clamp(12px,2vh,18px));
     background:linear-gradient(to top,rgba(10,17,40,.85) 30%,transparent)}
-  .caption{text-align:center;margin-bottom:14px}
-  .caption b{font-size:20px;font-weight:800;letter-spacing:-.01em}
-  .caption span{display:block;font-size:13px;opacity:.8;margin-top:2px}
-  .controls{display:flex;align-items:center;justify-content:center;gap:6px}
-  .nav{width:52px;height:52px;border-radius:50%;border:0;color:var(--paper);font-size:22px;cursor:pointer;
+  .caption{text-align:center;margin-bottom:clamp(8px,1.5vh,14px)}
+  .caption b{font-size:clamp(17px,2vw,22px);font-weight:800;letter-spacing:-.01em}
+  .caption span{display:block;font-size:clamp(11px,1.1vw,13px);opacity:.8;margin-top:2px}
+  .controls{display:flex;align-items:center;justify-content:center;gap:var(--control-gap)}
+  .nav{flex:0 0 var(--nav-size);width:var(--nav-size);height:var(--nav-size);border-radius:50%;border:0;color:var(--paper);
+    font-size:clamp(20px,2vw,22px);cursor:pointer;
     background:rgba(255,255,255,.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .nav:active{transform:scale(.92)}
-  .utility{flex:0 0 40px;width:40px;height:40px;border:0;border-radius:50%;color:var(--paper);font-size:18px;cursor:pointer;
+  .utility{flex:0 0 var(--utility-size);width:var(--utility-size);height:var(--utility-size);border:0;border-radius:50%;
+    color:var(--paper);font-size:clamp(16px,1.6vw,18px);cursor:pointer;
     background:rgba(255,255,255,.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .utility:active{transform:scale(.92)}
   .utility:disabled{opacity:.4}
-  .shutter{width:80px;height:80px;border-radius:50%;border:4px solid var(--paper);background:transparent;padding:5px;cursor:pointer}
+  .shutter{flex:0 0 var(--shutter-size);width:var(--shutter-size);height:var(--shutter-size);border-radius:50%;
+    border:clamp(3px,.35vw,4px) solid var(--paper);background:transparent;padding:5px;cursor:pointer}
   .shutter i{display:block;width:100%;height:100%;border-radius:50%;background:var(--gold);transition:transform .12s}
   .shutter:active i{transform:scale(.86)}
   .shutter:disabled{opacity:.4}
-  .chips{display:flex;justify-content:center;gap:8px;margin-top:14px}
-  .chip{width:9px;height:9px;border-radius:99px;background:rgba(255,255,255,.35);transition:.2s}
-  .chip.on{width:26px;background:var(--gold)}
+  .chips{display:flex;justify-content:center;gap:clamp(6px,.7vw,8px);margin-top:clamp(8px,1.5vh,14px)}
+  .chip{width:clamp(7px,.8vw,9px);height:clamp(7px,.8vw,9px);border-radius:99px;background:rgba(255,255,255,.35);transition:.2s}
+  .chip.on{width:clamp(20px,2.3vw,26px);background:var(--gold)}
   button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 
   /* ---------- Overlay (loading / error) ---------- */
-  .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    padding:clamp(16px,4vw,32px);text-align:center;
     background:radial-gradient(120% 90% at 50% 0%,var(--navy-2),var(--navy))}
   .overlay.hide{display:none}
-  .card{max-width:340px}
-  .emoji{font-size:56px;margin-bottom:14px}
-  .card h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
-  .card p{font-size:15px;line-height:1.55;opacity:.85}
-  .card ol{text-align:left;font-size:14px;line-height:1.6;margin:14px 0 0 20px;opacity:.9}
-  .btn{margin-top:22px;border:0;border-radius:14px;padding:14px 22px;font:700 16px var(--font);
+  .card{width:min(100%,380px)}
+  .emoji{font-size:clamp(42px,6vw,56px);margin-bottom:14px}
+  .card h1{font-size:clamp(22px,3vw,28px);font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
+  .card p{font-size:clamp(14px,1.6vw,16px);line-height:1.55;opacity:.85}
+  .card ol{text-align:left;font-size:clamp(13px,1.4vw,14px);line-height:1.6;margin:14px 0 0 20px;opacity:.9}
+  .btn{margin-top:22px;border:0;border-radius:14px;padding:clamp(11px,1.3vw,14px) clamp(16px,2vw,22px);
+    font:700 clamp(14px,1.5vw,16px) var(--font);
     background:var(--gold);color:var(--ink);cursor:pointer}
   .btn.ghost{background:rgba(255,255,255,.14);color:var(--paper);margin-left:8px}
   .spinner{width:44px;height:44px;border-radius:50%;border:4px solid rgba(255,255,255,.2);border-top-color:var(--gold);
@@ -72,14 +83,16 @@
   .flash{position:fixed;inset:0;z-index:15;background:#fff;opacity:0;pointer-events:none}
   .flash.go{animation:flash .35s ease-out}
   @keyframes flash{0%{opacity:.85}100%{opacity:0}}
-  .preview{position:fixed;inset:0;z-index:18;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-    padding:20px;background:rgba(10,17,40,.92)}
+  .preview{position:fixed;inset:0;z-index:18;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:clamp(10px,2vw,18px);padding:clamp(12px,2vw,20px);background:rgba(10,17,40,.92)}
   .preview.show{display:flex}
-  .preview img{max-width:100%;max-height:68vh;border-radius:18px;border:3px solid var(--paper);box-shadow:0 18px 50px rgba(0,0,0,.5)}
-  .row{display:flex;gap:10px}
+  .preview img{max-width:min(100%,900px);max-height:68vh;max-height:68dvh;border-radius:18px;border:3px solid var(--paper);
+    box-shadow:0 18px 50px rgba(0,0,0,.5)}
+  .row{display:flex;gap:clamp(8px,1.2vw,10px)}
   .row .btn{margin:0}
   .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translate(-50%,-20px);z-index:25;
-    background:var(--paper);color:var(--ink);font-weight:700;font-size:14px;padding:10px 16px;border-radius:99px;
+    max-width:calc(100vw - var(--gutter) - var(--gutter));text-align:center;background:var(--paper);color:var(--ink);font-weight:700;
+    font-size:clamp(12px,1.2vw,14px);padding:clamp(8px,1vw,10px) clamp(12px,1.6vw,16px);border-radius:99px;
     opacity:0;transition:.25s;pointer-events:none}
   .toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -506,10 +519,11 @@ async function init() {
   const sudutDalamMataKanan = getAnchor(362).group;
   const pipiKiri = getAnchor(234).group;
   const pipiKanan = getAnchor(454).group;
+  const anchorTinju = getAnchor(168).group;
   const efekLalat = buatLalat();
   const efekTinju = buatEfekTinju();
   mulutAtas.add(efekLalat.group);
-  getAnchor(168).group.add(efekTinju.group);
+  anchorTinju.add(efekTinju.group);
   efekLalat.group.visible = false;
   efekTinju.group.visible = false;
   efekLalat.group.scale.setScalar(.7);
@@ -521,8 +535,8 @@ async function init() {
   }
 
   efekWajah = {
-    fly: { ...efekLalat, active: false, startedAt: 0, cooldownUntil: 0, armed: true },
-    punch: { ...efekTinju, active: false, startedAt: 0, cooldownUntil: 0, armed: true, direction: 1 },
+    fly: { ...efekLalat, active: false, startedAt: 0, cooldownUntil: 0, armed: true, faceScale: 1 },
+    punch: { ...efekTinju, active: false, startedAt: 0, cooldownUntil: 0, armed: true, direction: 1, faceScale: 1 },
     fist: { cooldownUntil: 0, armed: true },
     mouthUpper: mulutAtas,
     mouthLower: mulutBawah,
@@ -531,7 +545,8 @@ async function init() {
     leftEyeInner: sudutDalamMataKiri,
     rightEyeInner: sudutDalamMataKanan,
     leftCheek: pipiKiri,
-    rightCheek: pipiKanan
+    rightCheek: pipiKanan,
+    punchAnchor: anchorTinju
   };
 
   await pastikanAksesKamera();
@@ -603,6 +618,15 @@ function updateEfekWajah(t, faceFound) {
   const eyeLeft = facePoints.leftEye;
   const eyeRight = facePoints.rightEye;
   const faceWidth = eyeLeft.distanceTo(eyeRight);
+  const faceScaleAt = anchor => {
+    const left = anchor.worldToLocal(eyeLeft.clone());
+    const right = anchor.worldToLocal(eyeRight.clone());
+    const scale = left.distanceTo(right) / .6;
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  };
+  efekWajah.fly.faceScale = faceScaleAt(efekWajah.mouthUpper);
+  efekWajah.punch.faceScale = faceScaleAt(efekWajah.punchAnchor);
+  efekWajah.punch.group.scale.setScalar(efekWajah.punch.faceScale);
   const mouthRatio = faceWidth > 0 ? lipGap / faceWidth : 0;
   const mouthOpen = mouthRatio > .12;
 
@@ -613,23 +637,25 @@ function updateEfekWajah(t, faceFound) {
     efekWajah.fly.startedAt = t;
     efekWajah.fly.cooldownUntil = t + 1.8;
     efekWajah.fly.group.visible = true;
-    efekWajah.fly.group.position.set(-.72, .12, .48);
+    const scale = efekWajah.fly.faceScale;
+    efekWajah.fly.group.position.set(-.72 * scale, .12 * scale, .48 * scale);
   }
 
   if (efekWajah.fly.active) {
     const progress = (t - efekWajah.fly.startedAt) / .85;
     const travel = Math.min(progress, 1);
     const ease = 1 - (1 - travel) ** 3;
+    const scale = efekWajah.fly.faceScale;
     efekWajah.fly.group.position.set(
-      THREE.MathUtils.lerp(-.72, 0, ease),
-      THREE.MathUtils.lerp(.12, -.025, ease) + Math.sin(t * 24) * .025 * (1 - travel),
-      THREE.MathUtils.lerp(.48, -.12, ease)
+      THREE.MathUtils.lerp(-.72 * scale, 0, ease),
+      THREE.MathUtils.lerp(.12 * scale, -.025 * scale, ease) + Math.sin(t * 24) * .025 * scale * (1 - travel),
+      THREE.MathUtils.lerp(.48 * scale, -.12 * scale, ease)
     );
     efekWajah.fly.group.rotation.y = Math.sin(t * 12) * .22;
     efekWajah.fly.wings.forEach((wing, i) => {
       wing.rotation.x = Math.sin(t * 48 + i * Math.PI) * .65;
     });
-    efekWajah.fly.group.scale.setScalar(.7 * (1 - .55 * ease));
+    efekWajah.fly.group.scale.setScalar(.7 * scale * (1 - .55 * ease));
     if (progress >= 1.05) {
       efekWajah.fly.active = false;
       efekWajah.fly.group.visible = false;
